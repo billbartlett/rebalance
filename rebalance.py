@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import os,re
 
-
 def find_disks(rootdir,depth):
     """
     which disks are available to unraid.  to start, this is going to be janky

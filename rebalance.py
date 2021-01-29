@@ -1,6 +1,13 @@
 #!/usr/bin/python3
 import os,re
 
+"""
+Hopefully, eventually, this will be a tool I can use to balance unraid shares.  
+The idea is that when adding new drives, most new data is going to be exclusively 
+written to the new drives unless some sort of balancing is done.  This is my 
+attempt to write my own utility to do said balancing.
+"""
+
 disklist = []
 sharelist = []
 
@@ -54,11 +61,14 @@ def get_shares(depth):
 disklist = find_disks(2)
 sharelist = get_shares(2)
 
-for x in disklist:
-    print(x)
 
 
-for x in sharelist:
-    print(x)
+
+
+#for x in disklist:
+#    print(x)
+#
+#for x in sharelist:
+#    print(x)
 
 

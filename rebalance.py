@@ -82,7 +82,7 @@ def get_dirs(basedir):
                     if entry.is_dir() and depth > 0:
                         dirmatch = re.search(pattern, str(entry))
                         if dirmatch:
-                            # extract directory name utilizing the grouping regex, and remove single quotes
+                            # extract directory name utilizing the grouping regex
                             matched_dir = dirmatch.group(1)
                             full_dir_name = dirname + "/" + matched_dir
 
@@ -117,7 +117,6 @@ disklist = find_disks(2)
 sharelist = get_shares(2)
 
 # first populate sharestats{} with disk usage information, per-share.
-# in theory, this should cache most of the disk stats and make subsequent asks for the directory sizes fast.
 # then, find the top level directories for each share, on each disk
 for sharename in sharelist:
     sharedir = "/mnt/user0/" + sharename
@@ -140,7 +139,7 @@ By the time the code gets here, we have established all of the data that we need
         * overall share disk usage
         * every TLD under every share, on every drive
 
-Now, how to decide what should be moved?  Good question.....
+Now, how to recommend what should be moved?  Good question.....
 """
 
 

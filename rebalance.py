@@ -25,4 +25,4 @@ def find_disks(rootdir,depth):
 
 
 rootdir = "/mnt/"
-find_disks(rootdir, "2")
+find_disks(rootdir, 2)

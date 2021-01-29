@@ -2,9 +2,9 @@
 import os,re
 
 """
-Hopefully, eventually, this will be a tool I can use to balance unraid shares.  
-The idea is that when adding new drives, most new data is going to be exclusively 
-written to the new drives unless some sort of balancing is done.  This is my 
+Hopefully, eventually, this will be a tool I can use to balance unraid shares.
+The idea is that when adding new drives, most new data is going to be exclusively
+written to the new drives unless some sort of balancing is done.  This is my
 attempt to write my own utility to do said balancing.
 """
 

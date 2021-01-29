@@ -1,9 +1,18 @@
 #!/usr/bin/python3
-import os,re
+import os
+import re
+import psutil
 
 """
 Hopefully, eventually, this will be a tool I can use to balance unraid shares. The idea is that when adding new drives, most new data is going to be exclusively written to the new drives unless some sort of balancing is done.  This is my attempt to write my own utility to do said balancing.
 """
+
+disklist = []
+sharelist = []
+dirlist = []
+dirstats = {}
+sharestats = {}
+diskstats = {}
 
 
 def find_disks(depth):
@@ -59,7 +68,8 @@ def get_dirs(basedir):
     """
 
     # os.scandir() will encapsulate the directory name in single quotes
-    pattern = "('.*')"
+    #pattern = "'(.*)'"
+    pattern = "['|\"](.*)['|\"]"
     depth = 3
     # does the directory exist?
     isDirectory = os.path.isdir(dirname)
@@ -74,39 +84,73 @@ def get_dirs(basedir):
                         if dirmatch:
                             # extract directory name utilizing the grouping regex, and remove single quotes
                             matched_dir = dirmatch.group(1)
-                            matched_dir = str(matched_dir.replace("'",""))
                             full_dir_name = dirname + "/" + matched_dir
+
                             # append directory to dirlist
                             dirlist.append(full_dir_name)
 
+                            # populate dirstats dictionary with directory size information
+                            dirsize = get_tree_size(full_dir_name)
+                            dirstats[full_dir_name] = dirsize
+
 def get_tree_size(path):
-    """total size of files in given path and subdirs."""
+    # total size of files in given path and subdirs.
     total = 0
     for entry in os.scandir(path):
         if entry.is_dir(follow_symlinks=False):
             total += get_tree_size(entry.path)
         else:
             total += entry.stat(follow_symlinks=False).st_size
-
     return total
 
 
+def disk_free(disk):
+    mount = "/mnt/" + disk
+    usage = psutil.disk_usage(mount)
+    free = usage.free
+    percent_used = usage.percent
+    diskstats[disk] = {'free': free, 'percent': percent_used}
 
-disklist = []
-sharelist = []
-dirlist = []
-dirstats = {}
 
 # find the disks and shares
 disklist = find_disks(2)
 sharelist = get_shares(2)
 
-# find the top level directories for each share, on each disk
+# first populate sharestats{} with disk usage information, per-share.
+# in theory, this should cache most of the disk stats and make subsequent asks for the directory sizes fast.
+# then, find the top level directories for each share, on each disk
 for sharename in sharelist:
+    sharedir = "/mnt/user0/" + sharename
+    shareusage = get_tree_size(sharedir)
+    sharestats[sharedir] = shareusage
+
     for diskname in disklist:
         dirname = "/mnt/" + diskname + "/" + sharename
+        disk_free(diskname)
         get_dirs(dirname)
 
-#for x in dirlist:
-#    print(x)
+"""
+By the time the code gets here, we have established all of the data that we need to figure out what should be done.
+
+    * list of all physical drives (sketchy code, but it's functional)
+    * list of all shares on the array
+    * list of all top level directories in each share  (/mnt/disk?/$share_name/$TLD)
+    * disk usage for:
+        * every physical drive (free space and percent free)
+        * overall share disk usage
+        * every TLD under every share, on every drive
+
+Now, how to decide what should be moved?  Good question.....
+"""
+
+
+
+
+
+
+
+
+
+
+
 

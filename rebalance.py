@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
-
 import os,re
 
-"""
-define root directory.
- - using the unraid-specific share directory of /mnt/user0
-"""
 
 def find_disks(rootdir,depth):
     """
     which disks are available to unraid.  to start, this is going to be janky
-    and simply use /mnt/disk*
+    and simply use /mnt/ with a max depth of 1, and match disk*
     """
     depth -= 1
     print(rootdir + "abcd")
@@ -19,7 +14,6 @@ def find_disks(rootdir,depth):
         for entry in p:
             yield entry.path
             if entry.is_dir() and depth > 0:
-                print(entry)
                 if regex.match(entry):
                     print(entry)
 

@@ -5,12 +5,14 @@ import psutil
 import pprint
 import shelve
 from math import log2
-from math import isclose
 import itertools
 
 
 """
-Hopefully, eventually, this will be a tool I can use to balance unraid shares. The idea is that when adding new drives, most new data is going to be exclusively written to the new drives unless some sort of balancing is done.  This is my attempt to write my own utility to do said balancing.
+Hopefully, eventually, this will be a tool I can use to balance unraid shares. The idea
+is that when adding new drives, most new data is going to be exclusively written to the
+new drives unless some sort of balancing is done.  This is my attempt to write my own
+utility to do said balancing.
 """
 
 ### start functions
@@ -60,15 +62,18 @@ def get_dirs(basedir):
     """
     build a list of all subdirectories in all shares, with a depth limit of 1
 
-    depth is a method to limit how far down the directory structure the code will look.  I'm only interested in 1 level after the share name:
+    depth is a method to limit how far down the directory structure the code will look.
+    I'm only interested in 1 level after the share name:
         /mnt/disk1/movies/this_directory_is_calculated
 
-    since dirname will be /mnt/[disk_name]/[share_name] I only want to go one level deeper.  set depth as 2, and the first iteration will lower it to 1, and the code will stop once depth is not > 0.
-    """
+    since dirname will be /mnt/[disk_name]/[share_name] I only want to go one level
+    deeper.  set depth as 2, and the first iteration will lower it to 1, and the code
+    will stop once depth is not > 0.
 
-    # os.scandir() will encapsulate the directory name in single quotes
-    # -- just kidding.  if there is a single quote in the directory name, it will be encapsulated in double quotes.
-    #pattern = "'(.*)'"
+    os.scandir() will encapsulate the directory name in single quotes
+      -- just kidding.  if there is a single quote in the directory name, it will be
+     encapsulated in double quotes.
+    """
     pattern = "['|\"](.*)['|\"]"
     depth = 3
     # does the directory exist?
@@ -124,7 +129,8 @@ def disk_distance(avg):
     """
     calculate the "distance" (of data) that the drive is from the target average
     example:  average usage is 2.5TB, and a disk has 4TB stored.  the distance is -1.5TB
-    a negative distance indicates data needs to move off of the drive to bring it closer to the target average
+    a negative distance indicates data needs to move off of the drive to bring it closer
+    to the target average
     """
     for disk, used in diskstats.items():
         diskdistance[disk] = {}
@@ -204,7 +210,9 @@ def calculate_moves(diskdistance):
             to combat that, I have sorted the directory sizes in decending order.
             that helps because we know the very first list of numbers returned from itertools is going to be the first N numbers in the list, and thus will be
             the highest possible combination of numbers at that subsequence check.  we
-            can skip literally billions of calculations by simply checking if those first N numbers are larger than our target tolerance.  If they aren't, go to the next iteration.
+            can skip literally billions of calculations by simply checking if those
+            first N numbers are larger than our target tolerance.  If they aren't, go to
+            the next iteration.
             """
             # maximum directory combinations to test.
             max_dirs = 50

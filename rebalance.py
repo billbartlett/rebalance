@@ -3,7 +3,11 @@ import os
 import re
 import psutil
 import pprint
+import shelve
 from math import log2
+from math import isclose
+import itertools
+
 
 """
 Hopefully, eventually, this will be a tool I can use to balance unraid shares. The idea is that when adding new drives, most new data is going to be exclusively written to the new drives unless some sort of balancing is done.  This is my attempt to write my own utility to do said balancing.
@@ -146,14 +150,88 @@ def datasize(num):
             return "%3.1f %s" % (num, x)
         num /= step_unit
 
+
+
 def calculate_moves(diskdistance):
     """
-    import diskdistance (dictionary on which drives need to gain or lose data)
     start with smallest number (largest excess data) and largest number (needs most data)
     find the difference of the pair, and then traverse sharestats dictionary to find
     the closest match in data volume to move from source to target.
     """
+    # maxdisk = needs most data, mindisk = needs to lose the most data
+    maxdisk = max(int(diff['diff']) for diff in diskdistance.values())
+    mindisk = min(int(diff['diff']) for diff in diskdistance.values())
+    diskdiff = int((abs(mindisk) - maxdisk))
+    #print("max: %d | min: %d | diff: %d" % (maxdisk, abs(mindisk), diskdiff))
 
+    # perform this loop until mindisk and maxdisk are within 50gb.
+    # For the sake of this exercise, that will suffice as "balanced"
+    while diskdiff > 53687063712:
+        scansizes = []
+        # can mindisk supply enough data by itself to bring maxdisk to average?
+        if abs(mindisk) > maxdisk:
+            # yes?  then figure out what to move
+            # at this point, all we have is the bytecount for mindisk and maxdisk.
+            # determine which drives those belong to
+            for disk,info in diskdistance.items():
+                if info['diff'] == maxdisk:
+                    maxdrive = disk
+                if info['diff'] == mindisk:
+                    mindrive = disk
+            # find list of file sizes that reside on mindisk, and append to a list.
+            for filedir, dirsize in dirstats.items():
+                matchdir = re.search(mindrive, filedir)
+                if matchdir:
+                    if dirsize == 0:
+                        continue
+                    #print("%d (%s) | %s" % (dirsize, filedir, mindrive))
+                    scansizes.append(dirsize)
+            #sort the directory sizes largest to smallest.
+            scansizes.sort(reverse=True)
+
+            """
+            itertools.combinations will provide an exhaustive list of all possible
+            combinations.  When dealing with hundreds of different directory sizes, the
+            numbers start to get very large, very fast.
+              for example: with 400+ directories, even showing only 4 subsequences of
+              those 400+, I was in the tens of millions of combinations/calculations.
+              (take these 400+ numbers, and show me all the combinations of four of them)
+
+            to combat that, I have sorted the directory sizes in decending order.
+            that helps because we know the very first list of numbers returned from itertools is going to be the first N numbers in the list, and thus will be
+            the highest possible combination of numbers at that subsequence check.  we
+            can skip literally billions of calculations by simply checking if those first N numbers are larger than our target tolerance.  If they aren't, go to the next iteration.
+            """
+            # maximum directory combinations to test.
+            max_dirs = 90
+
+            # tolerance is how close the total needs to be to the target in order
+            # to move forward.  between 90% and 105% of the target seems reasonable.
+            tolerance_low = int((.9 * maxdisk))
+            tolerance_high = int((1.05 * maxdisk))
+
+            counter = 0
+            for i in range(1,max_dirs):
+                # tt is a temp variable to store the first list of numbers returned.
+                tt = list(itertools.islice(itertools.combinations(scansizes,i), 1))
+
+                # since itertools returns a list of tuples, we have to first take the
+                # tuple out of a list, and then sum it.  probably cleaner ways to do this
+                for tuplemath in tt:
+                    tuplesum = int(sum(list(tuplemath)))
+
+                # check tuplesum against our tolerance
+                if tuplesum < tolerance_low:
+                    print("%d: nope: %d vs low tolerance (%d)" % (i, tuplesum, tolerance_low))
+                    continue
+                else:
+                    # now we have a list of filesizes that match our minimum.
+                    # check to make sure the list is within maximum tolerance
+                    if tuplesum < tolerance_high:
+                        print("%d: yep: %d vs tolerance high (%d)" % (i, tuplesum, tolerance_high))
+                        counter += 1
+                        print("PROGRESS!")
+        diskdiff = 1
 
 ### end functions
 
@@ -161,8 +239,10 @@ def calculate_moves(diskdistance):
 disklist = []
 sharelist = []
 dirlist = []
-dirstats = {}
-sharestats = {}
+#dirstats = {}
+dirstats = shelve.open('dirs.db')
+#sharestats = {}
+sharestats = shelve.open('shares.db')
 diskstats = {}
 diskdistance = {}
 movertype = []
@@ -173,15 +253,17 @@ sharelist = get_shares(2)
 
 # first populate sharestats{} with disk usage information, per-share.
 # then, find the top level directories for each share, on each disk
-for sharename in sharelist:
-    sharedir = "/mnt/user0/" + sharename
-    shareusage = get_tree_size(sharedir)
-    sharestats[sharedir] = shareusage
+#for sharename in sharelist:
+    #sharedir = "/mnt/user0/" + sharename
+    #shareusage = get_tree_size(sharedir)
+    #sharestats[sharedir] = shareusage
 
-    for diskname in disklist:
-        dirname = "/mnt/" + diskname + "/" + sharename
-        disk_used(diskname)
-        get_dirs(dirname)
+for diskname in disklist:
+    #dirname = "/mnt/" + diskname + "/" + sharename
+    disk_used(diskname)
+    #get_dirs(dirname)
+
+
 
 """
 By the time the code gets here, we have established all of the data that we need to figure out what should be done.
@@ -203,15 +285,14 @@ avg_disk_used = average_disk(diskstats)
 
 # calculate amount of data each drive needs to gain or lose to get close to the target
 disk_distance(avg_disk_used)
-
+calculate_moves(diskdistance)
 
 #pprint.pprint(diskstats)
 #print("Avg: " + "| " + str(avg_disk_used) + " | " + str(datasize(avg_disk_used)))
 #pprint.pprint(diskdistance)
 
-
-
-
+dirstats.close()
+sharestats.close()
 
 
 

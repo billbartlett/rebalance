@@ -168,7 +168,10 @@ def calculate_moves(diskdistance):
     # For the sake of this exercise, that will suffice as "balanced"
     while diskdiff > 53687063712:
         scansizes = []
-        # can mindisk supply enough data by itself to bring maxdisk to average?
+        matched_dirs = {}
+        move_list = {}
+        # can mindisk supply enough data by itself to bring maxdisk to average,
+        # without falling below average itself:
         if abs(mindisk) > maxdisk:
             # yes?  then figure out what to move
             # at this point, all we have is the bytecount for mindisk and maxdisk.
@@ -179,13 +182,14 @@ def calculate_moves(diskdistance):
                 if info['diff'] == mindisk:
                     mindrive = disk
             # find list of file sizes that reside on mindisk, and append to a list.
+            # also create a dictionary of matched directories and corresponding sizes
             for filedir, dirsize in dirstats.items():
                 matchdir = re.search(mindrive, filedir)
                 if matchdir:
                     if dirsize == 0:
                         continue
-                    #print("%d (%s) | %s" % (dirsize, filedir, mindrive))
                     scansizes.append(dirsize)
+                    matched_dirs[dirsize] = filedir
             #sort the directory sizes largest to smallest.
             scansizes.sort(reverse=True)
 
@@ -203,7 +207,7 @@ def calculate_moves(diskdistance):
             can skip literally billions of calculations by simply checking if those first N numbers are larger than our target tolerance.  If they aren't, go to the next iteration.
             """
             # maximum directory combinations to test.
-            max_dirs = 90
+            max_dirs = 50
 
             # tolerance is how close the total needs to be to the target in order
             # to move forward.  between 90% and 105% of the target seems reasonable.
@@ -222,15 +226,24 @@ def calculate_moves(diskdistance):
 
                 # check tuplesum against our tolerance
                 if tuplesum < tolerance_low:
-                    print("%d: nope: %d vs low tolerance (%d)" % (i, tuplesum, tolerance_low))
+                    #print("%d: nope: %d vs low tolerance (%d)" % (i, tuplesum, tolerance_low))
                     continue
                 else:
                     # now we have a list of filesizes that match our minimum.
                     # check to make sure the list is within maximum tolerance
                     if tuplesum < tolerance_high:
-                        print("%d: yep: %d vs tolerance high (%d)" % (i, tuplesum, tolerance_high))
-                        counter += 1
-                        print("PROGRESS!")
+                        # earlier created matched_dirs will make it 'easy' to find the
+                        # directories that need moved.
+                        # first go through directory sizes from the list tuplemath above
+                        for dirsize in tuplemath:
+                            # search through matched_dirs for corresponding size, and
+                            # append to a new dictionary:  move_list
+                            for mdirsize,mdir in matched_dirs.items():
+                                if mdirsize == dirsize:
+                                    #move_list.append(mdir)
+                                    move_list[dirsize] = mdir
+                    break
+            return tuplesum, move_list, maxdrive, mindrive
         diskdiff = 1
 
 ### end functions
@@ -285,8 +298,10 @@ avg_disk_used = average_disk(diskstats)
 
 # calculate amount of data each drive needs to gain or lose to get close to the target
 disk_distance(avg_disk_used)
-calculate_moves(diskdistance)
+movesum, movelist, maxdrive, mindrive = calculate_moves(diskdistance)
 
+print("Moving %d (%s): from %s to %s" % (movesum,datasize(movesum), mindrive, maxdrive))
+pprint.pprint(movelist)
 #pprint.pprint(diskstats)
 #print("Avg: " + "| " + str(avg_disk_used) + " | " + str(datasize(avg_disk_used)))
 #pprint.pprint(diskdistance)

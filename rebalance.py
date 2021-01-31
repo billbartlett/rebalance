@@ -2,19 +2,14 @@
 import os
 import re
 import psutil
+import pprint
+from math import log2
 
 """
 Hopefully, eventually, this will be a tool I can use to balance unraid shares. The idea is that when adding new drives, most new data is going to be exclusively written to the new drives unless some sort of balancing is done.  This is my attempt to write my own utility to do said balancing.
 """
 
-disklist = []
-sharelist = []
-dirlist = []
-dirstats = {}
-sharestats = {}
-diskstats = {}
-
-
+### start functions
 def find_disks(depth):
     """
     which disks are available to unraid.  to start, this is going to be janky and simply use /mnt/ with a max depth of 1, and match disk*
@@ -68,6 +63,7 @@ def get_dirs(basedir):
     """
 
     # os.scandir() will encapsulate the directory name in single quotes
+    # -- just kidding.  if there is a single quote in the directory name, it will be encapsulated in double quotes.
     #pattern = "'(.*)'"
     pattern = "['|\"](.*)['|\"]"
     depth = 3
@@ -99,18 +95,77 @@ def get_tree_size(path):
     for entry in os.scandir(path):
         if entry.is_dir(follow_symlinks=False):
             total += get_tree_size(entry.path)
-        else:
+        else :
             total += entry.stat(follow_symlinks=False).st_size
     return total
 
 
-def disk_free(disk):
+def disk_used(disk):
     mount = "/mnt/" + disk
     usage = psutil.disk_usage(mount)
-    free = usage.free
-    percent_used = usage.percent
-    diskstats[disk] = {'free': free, 'percent': percent_used}
+    used = usage.used
+    diskstats[disk] = used
 
+def average_disk(diskstats):
+    # input should be the diskstats dictionary
+    count = 0
+    totalused = 0
+    for disk, used in diskstats.items():
+        count += 1
+        totalused += used
+    avgused = int(totalused/count)
+    return(avgused)
+
+def disk_distance(avg):
+    """
+    calculate the "distance" (of data) that the drive is from the target average
+    example:  average usage is 2.5TB, and a disk has 4TB stored.  the distance is -1.5TB
+    a negative distance indicates data needs to move off of the drive to bring it closer to the target average
+    """
+    for disk, used in diskstats.items():
+        diskdistance[disk] = {}
+        #print(type(disk))
+        #print("disk: " + disk)
+        #print("used: " + str(used))
+        if avg > used:
+            diff = int(avg - used)
+            hdiff = str(datasize(diff))
+            diskdistance[disk] = {'diff': diff, 'mover': 'target', 'hdiff': hdiff}
+        if used > avg:
+            diff = -1*(int(used - avg))
+            hdiff = datasize(abs(diff))
+            hdiff = "-" + str(hdiff)
+            diskdistance[disk] = {'diff': diff, 'mover': 'source', 'hdiff': hdiff}
+
+def datasize(num):
+    # "human readable" formatting
+    step_unit = 1024.0
+
+    for x in ['bytes', 'KB', 'MB', 'GB', 'TB']:
+        if num < step_unit:
+            return "%3.1f %s" % (num, x)
+        num /= step_unit
+
+def calculate_moves(diskdistance):
+    """
+    import diskdistance (dictionary on which drives need to gain or lose data)
+    start with smallest number (largest excess data) and largest number (needs most data)
+    find the difference of the pair, and then traverse sharestats dictionary to find
+    the closest match in data volume to move from source to target.
+    """
+
+
+### end functions
+
+# define lists/dictionaries that will be used
+disklist = []
+sharelist = []
+dirlist = []
+dirstats = {}
+sharestats = {}
+diskstats = {}
+diskdistance = {}
+movertype = []
 
 # find the disks and shares
 disklist = find_disks(2)
@@ -125,7 +180,7 @@ for sharename in sharelist:
 
     for diskname in disklist:
         dirname = "/mnt/" + diskname + "/" + sharename
-        disk_free(diskname)
+        disk_used(diskname)
         get_dirs(dirname)
 
 """
@@ -142,7 +197,17 @@ By the time the code gets here, we have established all of the data that we need
 Now, how to recommend what should be moved?  Good question.....
 """
 
+# start with average size of data used.
+# this will be the approximate target for each drive.
+avg_disk_used = average_disk(diskstats)
 
+# calculate amount of data each drive needs to gain or lose to get close to the target
+disk_distance(avg_disk_used)
+
+
+#pprint.pprint(diskstats)
+#print("Avg: " + "| " + str(avg_disk_used) + " | " + str(datasize(avg_disk_used)))
+#pprint.pprint(diskdistance)
 
 
 

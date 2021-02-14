@@ -1,11 +1,21 @@
 #!/usr/bin/python3
-import os
-import re
-import psutil
-import pprint
-import shelve
-from math import log2
+import os, re, shutil
+import psutil, pprint, shelve
 import itertools
+from math import log2
+
+# utilizing rich for prettier text output
+from rich import print
+from rich.console import Console
+import logging
+from rich.logging import RichHandler
+console = Console()
+log = logging.getLogger("rich")
+
+FORMAT = "%(message)s"
+logging.basicConfig(
+    level="NOTSET", format=FORMAT, datefmt="[%X]", handlers=[RichHandler()]
+)
 
 
 """
@@ -161,98 +171,147 @@ def datasize(num):
 def calculate_moves(diskdistance):
     """
     start with smallest number (largest excess data) and largest number (needs most data)
-    find the difference of the pair, and then traverse sharestats dictionary to find
+    find the difference of the pair, and then traverse diskdistance dictionary to find
     the closest match in data volume to move from source to target.
     """
     # maxdisk = needs most data, mindisk = needs to lose the most data
     maxdisk = max(int(diff['diff']) for diff in diskdistance.values())
     mindisk = min(int(diff['diff']) for diff in diskdistance.values())
-    diskdiff = int((abs(mindisk) - maxdisk))
+    #diskdiff = int((abs(mindisk) - maxdisk))
     #print("max: %d | min: %d | diff: %d" % (maxdisk, abs(mindisk), diskdiff))
 
     # perform this loop until mindisk and maxdisk are within 50gb.
     # For the sake of this exercise, that will suffice as "balanced"
-    while diskdiff > 53687063712:
-        scansizes = []
-        matched_dirs = {}
-        move_list = {}
-        # can mindisk supply enough data by itself to bring maxdisk to average,
-        # without falling below average itself:
-        if abs(mindisk) > maxdisk:
-            # yes?  then figure out what to move
-            # at this point, all we have is the bytecount for mindisk and maxdisk.
-            # determine which drives those belong to
-            for disk,info in diskdistance.items():
-                if info['diff'] == maxdisk:
-                    maxdrive = disk
-                if info['diff'] == mindisk:
-                    mindrive = disk
-            # find list of file sizes that reside on mindisk, and append to a list.
-            # also create a dictionary of matched directories and corresponding sizes
-            for filedir, dirsize in dirstats.items():
-                matchdir = re.search(mindrive, filedir)
-                if matchdir:
-                    if dirsize == 0:
-                        continue
-                    scansizes.append(dirsize)
-                    matched_dirs[dirsize] = filedir
-            #sort the directory sizes largest to smallest.
-            scansizes.sort(reverse=True)
-
-            """
-            itertools.combinations will provide an exhaustive list of all possible
-            combinations.  When dealing with hundreds of different directory sizes, the
-            numbers start to get very large, very fast.
-              for example: with 400+ directories, even showing only 4 subsequences of
-              those 400+, I was in the tens of millions of combinations/calculations.
-              (take these 400+ numbers, and show me all the combinations of four of them)
-
-            to combat that, I have sorted the directory sizes in decending order.
-            that helps because we know the very first list of numbers returned from itertools is going to be the first N numbers in the list, and thus will be
-            the highest possible combination of numbers at that subsequence check.  we
-            can skip literally billions of calculations by simply checking if those
-            first N numbers are larger than our target tolerance.  If they aren't, go to
-            the next iteration.
-            """
-            # maximum directory combinations to test.
-            max_dirs = 50
-
-            # tolerance is how close the total needs to be to the target in order
-            # to move forward.  between 90% and 105% of the target seems reasonable.
-            tolerance_low = int((.9 * maxdisk))
-            tolerance_high = int((1.05 * maxdisk))
-
-            counter = 0
-            for i in range(1,max_dirs):
-                # tt is a temp variable to store the first list of numbers returned.
-                tt = list(itertools.islice(itertools.combinations(scansizes,i), 1))
-
-                # since itertools returns a list of tuples, we have to first take the
-                # tuple out of a list, and then sum it.  probably cleaner ways to do this
-                for tuplemath in tt:
-                    tuplesum = int(sum(list(tuplemath)))
-
-                # check tuplesum against our tolerance
-                if tuplesum < tolerance_low:
-                    #print("%d: nope: %d vs low tolerance (%d)" % (i, tuplesum, tolerance_low))
+    #while diskdiff > 53687063712:
+    scansizes = []
+    matched_dirs = {}
+    move_list = {}
+    tuplesum = 0
+    # can mindisk supply enough data by itself to bring maxdisk to average,
+    # without falling below average itself:
+    if abs(mindisk) > maxdisk:
+        # yes?  then figure out what to move
+        # at this point, all we have is the bytecount for mindisk and maxdisk.
+        # determine which drives those belong to
+        for disk,info in diskdistance.items():
+            if info['diff'] == maxdisk:
+                maxdrive = disk
+            if info['diff'] == mindisk:
+                mindrive = disk
+        # find list of file sizes that reside on mindisk, and append to a list.
+        # also create a dictionary of matched directories and corresponding sizes
+        for filedir, dirsize in dirstats.items():
+            matchdir = re.search(mindrive, filedir)
+            if matchdir:
+                if dirsize == 0:
                     continue
-                else:
-                    # now we have a list of filesizes that match our minimum.
-                    # check to make sure the list is within maximum tolerance
-                    if tuplesum < tolerance_high:
-                        # earlier created matched_dirs will make it 'easy' to find the
-                        # directories that need moved.
-                        # first go through directory sizes from the list tuplemath above
-                        for dirsize in tuplemath:
-                            # search through matched_dirs for corresponding size, and
-                            # append to a new dictionary:  move_list
-                            for mdirsize,mdir in matched_dirs.items():
-                                if mdirsize == dirsize:
-                                    #move_list.append(mdir)
-                                    move_list[dirsize] = mdir
+                scansizes.append(dirsize)
+                matched_dirs[dirsize] = filedir
+        #sort the directory sizes largest to smallest.
+        scansizes.sort(reverse=True)
+
+        """
+        itertools.combinations will provide an exhaustive list of all possible
+        combinations.  When dealing with hundreds of different directory sizes, the
+        numbers start to get very large, very fast.
+          for example: with 400+ directories, even showing only 4 subsequences of
+          those 400+, I was in the tens of millions of combinations/calculations.
+          (take these 400+ numbers, and show me all the combinations of four of them)
+
+        to combat that, I have sorted the directory sizes in decending order.
+        that helps because we know the very first list of numbers returned from
+        itertools is going to be the first N numbers in the list, and thus will be
+        the highest possible combination of numbers at that subsequence check.  we
+        can skip literally billions of calculations by simply checking if those
+        first N numbers are larger than our target tolerance.  If they aren't, go to
+        the next iteration.
+        """
+        # maximum directory combinations to test.
+        max_dirs = 50
+
+        # tolerance is how close the total needs to be to the target in order
+        # to move forward.  between 90% and 105% of the target seems reasonable.
+        tolerance_low = int((.9 * maxdisk))
+        tolerance_high = int((1.05 * maxdisk))
+
+        counter = 0
+        for i in range(1,max_dirs):
+            # tt is a temp variable to store the first list of numbers returned.
+            tt = list(itertools.islice(itertools.combinations(scansizes,i), 1))
+
+            # since itertools returns a list of tuples, we have to first take the
+            # tuple out of a list, and then sum it.  probably cleaner ways to do this
+            for tuplemath in tt:
+                tuplesum = int(sum(list(tuplemath)))
+
+            # check tuplesum against our tolerance
+            if tuplesum < tolerance_low:
+                #print("%d: nope: %d vs low tolerance (%d)" % (i, tuplesum, tolerance_low))
+                continue
+            else:
+                # now we have a list of filesizes that match our minimum.
+                # check to make sure the list is within maximum tolerance
+                if tuplesum < tolerance_high:
+                    # earlier created matched_dirs will make it 'easy' to find the
+                    # directories that need moved.
+                    # first go through directory sizes from the list tuplemath above
+                    for dirsize in tuplemath:
+                        # search through matched_dirs for corresponding size, and
+                        # append to a new dictionary:  move_list
+                        for mdirsize,mdir in matched_dirs.items():
+                            if mdirsize == dirsize:
+                                #move_list.append(mdir)
+                                move_list[dirsize] = mdir
+                break
+        return tuplesum, move_list, maxdrive, mindrive
+        #diskdiff = 1
+
+def check_md5(source_dir, target_dir):
+    # traverse a directory of files
+
+
+def move_data(move_list, source, target):
+    # function to move the data (move_list) from source to target
+
+    # iterate through move_list to find the share names.  we need to verify that
+    # the source share /mnt/disk?/SHARE_NAME exists on the target
+    for size, source_dir in move_list.items():
+        # regex to match share name and directory to move
+        sharematch = re.search(r"\/mnt/" + source + "\/(.*)\/(.*)", source_dir)
+        if sharematch:
+            sharename = sharematch.group(1)
+            movedir = sharematch.group(2)
+            # test to see if directory exists on target
+            target_prefix = "/mnt/" + target + "/"
+            target_share_dir = target_prefix + sharename
+            target_dir = target_share_dir + "/" + movedir
+            if os.path.isdir(target_share_dir):
+                #print("source: %s | target: %s" % (source_dir, target_dir))
+                # the time has come to move some files.
+                # I've chosen to copy so that I can verify md5sums before deleting
+                print("copying %s to %s" % (source_dir, target_dir))
+                #shutil.copytree(source_dir, target_dir)
+                # verify files match
+                check_md5(source_dir, target_dir)
+                continue
+            else:
+                log.fatal("NOT FOUND: %s" % target_share_dir)
+                # target directory doesn't exist.  try to create it.
+                try:
+                    os.mkdir(target_share_dir)
+                    print("mv %s %s" % (source_dir, target_dir))
+                except OSError as error:
+                    log.fatal(error)
                     break
-            return tuplesum, move_list, maxdrive, mindrive
-        diskdiff = 1
+        else:
+            # if we don't get a share match.  something is wrong, though I don't
+            # really know what it would be.
+            log.fatal("No share matched.  Something is fishy.")
+            break
+
+
+
+
 
 ### end functions
 
@@ -263,7 +322,7 @@ dirlist = []
 #dirstats = {}
 dirstats = shelve.open('dirs.db')
 #sharestats = {}
-sharestats = shelve.open('shares.db')
+#sharestats = shelve.open('shares.db')
 diskstats = {}
 diskdistance = {}
 movertype = []
@@ -274,15 +333,14 @@ sharelist = get_shares(2)
 
 # first populate sharestats{} with disk usage information, per-share.
 # then, find the top level directories for each share, on each disk
-#for sharename in sharelist:
-    #sharedir = "/mnt/user0/" + sharename
-    #shareusage = get_tree_size(sharedir)
-    #sharestats[sharedir] = shareusage
-
-for diskname in disklist:
-    #dirname = "/mnt/" + diskname + "/" + sharename
-    disk_used(diskname)
-    #get_dirs(dirname)
+for sharename in sharelist:
+    #    sharedir = "/mnt/user0/" + sharename
+    #    shareusage = get_tree_size(sharedir)
+    #    sharestats[sharedir] = shareusage
+    for diskname in disklist:
+        dirname = "/mnt/" + diskname + "/" + sharename
+        disk_used(diskname)
+        get_dirs(dirname)
 
 
 
@@ -296,27 +354,30 @@ By the time the code gets here, we have established all of the data that we need
         * every physical drive (free space and percent free)
         * overall share disk usage
         * every TLD under every share, on every drive
-
-Now, how to recommend what should be moved?  Good question.....
 """
 
 # start with average size of data used.
 # this will be the approximate target for each drive.
 avg_disk_used = average_disk(diskstats)
-
 # calculate amount of data each drive needs to gain or lose to get close to the target
 disk_distance(avg_disk_used)
 movesum, movelist, maxdrive, mindrive = calculate_moves(diskdistance)
+move_data(movelist, mindrive, maxdrive)
 
-print("Moving %d (%s): from %s to %s" % (movesum,datasize(movesum), mindrive, maxdrive))
-pprint.pprint(movelist)
+#print("Moving (%s): from %s to %s" % (datasize(movesum), mindrive, maxdrive))
+#print(movelist)
+#console.log("All local variables", log_locals=True)
+#pprint.pprint(movelist)
+#print("------- Disk Stats ----------")
 #pprint.pprint(diskstats)
-#print("Avg: " + "| " + str(avg_disk_used) + " | " + str(datasize(avg_disk_used)))
+#print("------- Share Stats ----------")
+#pprint.pprint(sharestats)
+#print("------- Distance ----------")
 #pprint.pprint(diskdistance)
+#print("Avg: " + "| " + str(avg_disk_used) + " | " + str(datasize(avg_disk_used)))
 
 dirstats.close()
-sharestats.close()
-
+#sharestats.close()
 
 
 

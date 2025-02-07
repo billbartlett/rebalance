@@ -14,5 +14,5 @@ This script balances data across Unraid disks by moving directories from overfil
 ## Usage
 ```bash
 python rebalance.py [--execute] [--rescan]
-  --execute: Perform actual moves (default is dry-run).
+  --execute: Perform actual moves (defaults to displaying move).
   --rescan:  Rescan disk usage instead of using cached data.

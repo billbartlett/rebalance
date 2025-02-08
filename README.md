@@ -5,7 +5,7 @@ This script balances data across Unraid disks by moving directories from overfil
 ## Features
 - **Automatic Disk Balancing**: Moves large directories first, followed by smaller refinements.
 - **Uses Rsync for Reliability**: Supports `--dry-run` mode by default.
-- **Database Caching**: Avoids unnecessary rescans with `shares.db` and `dirs.db`.
+- **Database Caching**: Avoids unnecessary rescans with `shares.db` and `dirs.db`.  (the initial run will scan shares & directories, but subsequent runs will default to using cached information)
 - **Progress Reporting**: Displays planned moves and disk usage before/after adjustments.
 
 ## Requirements

@@ -21,7 +21,7 @@ DB_DIRS = "dirs.db"
 
 # Argument Parser
 parser = argparse.ArgumentParser(description="Rebalance Unraid shares using rsync.")
-parser.add_argument("--execute", action="store_true", help="Execute the move (default is dry-run)")
+parser.add_argument("--execute", action="store_true", help="Execute the move")
 parser.add_argument("--rescan", action="store_true", help="Rescan directories and shares (ignores DB)")
 args = parser.parse_args()
 
@@ -54,7 +54,7 @@ def load_or_scan_shares():
     """Loads shares data from DB or rescans if not found."""
     with shelve.open(DB_SHARES) as db:
         if args.rescan or not bool(db):  # Rescan only if requested or DB is empty
-            console.print("Scanning shares...")
+            print("Scanning shares...")
             sharestats = {
                 share.name: run_du(USER_SHARES_DIR / share)
                 for share in sorted(USER_SHARES_DIR.iterdir()) if share.is_dir()
@@ -69,7 +69,7 @@ def load_or_scan_directories():
     """Loads directory data from DB or rescans if not found."""
     with shelve.open(DB_DIRS) as db:
         if args.rescan or not bool(db):  # Rescan only if requested or DB is empty
-            console.print("Scanning directories...")
+            print("Scanning directories...")
             dirstats = {}
             for disk in sorted(ROOT_DIR.iterdir()):
                 if disk.is_dir() and re.match(r"^disk[0-9]+$", disk.name):
@@ -180,7 +180,7 @@ def rsync_move(source, destination, execute=False):
             "rsync",
             "-a",
             "--progress",
-            "--remove-source-files" if execute else "--dry-run",
+            "--remove-source-files",
             file,
             str(destination),
         ]
@@ -202,45 +202,6 @@ def rsync_move(source, destination, execute=False):
         source.rmdir()
 
     return True
-
-def rsync_move_old(source, destination, execute=False):
-    """
-    Uses rsync to move files/directories with checksum verification.
-    """
-    source = Path(source)
-    destination = Path(destination)
-
-    source_files = glob.glob(f"{source}/*")  # Expands to a list of files
-    print(source_files)
-
-    #print(f"source: {source}  dest: {destination}")
-    exit()
-
-    if not source.exists():
-        print(f"Skipping: Source not found {source}")
-        return False
-    
-    rsync_cmd = [
-        "rsync", "-av", "--progress",
-        "--remove-source-files" if execute else "--dry-run",
-        str(source) + "/*", str(destination)
-    ]
-
-    print(f"Running: {' '.join(rsync_cmd)}")
-    try:
-        result = subprocess.run(rsync_cmd, check=True, text=True)
-
-        if result.returncode == 0:
-            if execute and source.is_dir():
-                source.rmdir()  # Removes empty directories
-            return True
-        else:
-            print(f"Rsync failed: {result.stderr}")
-            return False
-
-    except subprocess.CalledProcessError as e:
-        print(f"Rsync error: {e}")
-        return False
 
 def move_data(movelist, diskstats, diskdistance, execute=False):
     # Moves selected directories from source to target using rsync.
@@ -267,11 +228,11 @@ def move_data(movelist, diskstats, diskdistance, execute=False):
     for size, (source_dir, source, target) in movelist.items():
         table.add_row(source, target, source_dir, datasize(size))
 
-    console.print(table)
+    print(table)
 
     # Disk Stats Before/After Table
     #stats_table = Table(title="Disk Usage Before/After Moves")
-    stats_table = Table(title=f"Disk Usage Before/After Moves (Target: {datasize(avg_used)})")
+    stats_table = Table(title=f"\n\nDisk Usage Before/After Moves (Target: {datasize(avg_used)})")
     stats_table.add_column("Disk", justify="center")
     stats_table.add_column("Used Before", justify="right")
     stats_table.add_column("Distance Before", justify="right")
@@ -293,7 +254,7 @@ def move_data(movelist, diskstats, diskdistance, execute=False):
             datasize(diff_after),
         )
 
-    console.print(stats_table)
+    print(stats_table)
 
     if execute:
         for size, (source_dir, source, target) in movelist.items():

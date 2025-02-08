@@ -154,10 +154,9 @@ def calculate_moves(diskdistance, dirstats, min_move_size=1_000_000_000):
 ### **Move Execution Using Rsync**
 def rsync_move(source, destination, execute=False):
     """
-    Uses rsync to move files/directories with checksum verification.
+    Uses rsync to move files/directories 
     
     - Expands wildcards using `glob.glob()` to prevent shell expansion issues.
-    - Iterates over files and moves them individually.
     - Cleans up empty source directory after move.
     """
     source = Path(source)
@@ -220,24 +219,23 @@ def move_data(movelist, diskstats, diskdistance, execute=False):
 
     # Planned Moves Table
     table = Table(title="Planned Moves")
-    table.add_column("Source Disk", justify="center")
-    table.add_column("Target Disk", justify="center")
-    table.add_column("Directory", overflow="fold", max_width=60)
-    table.add_column("Size", justify="right")
+    table.add_column("Source Disk", justify="center", style="magenta")
+    table.add_column("Target Disk", justify="center", style="magenta")
+    table.add_column("Directory", overflow="fold", style="green1", max_width=80)
+    table.add_column("Size", style="cyan", justify="right")
 
     for size, (source_dir, source, target) in movelist.items():
         table.add_row(source, target, source_dir, datasize(size))
 
-    print(table)
+    console.print(table)
 
     # Disk Stats Before/After Table
-    #stats_table = Table(title="Disk Usage Before/After Moves")
     stats_table = Table(title=f"\n\nDisk Usage Before/After Moves (Target: {datasize(avg_used)})")
-    stats_table.add_column("Disk", justify="center")
-    stats_table.add_column("Used Before", justify="right")
-    stats_table.add_column("Distance Before", justify="right")
-    stats_table.add_column("Used After", justify="right")
-    stats_table.add_column("Distance After", justify="right")
+    stats_table.add_column("Disk", style="magenta", justify="center")
+    stats_table.add_column("Used Before", style="red", justify="right")
+    stats_table.add_column("Distance Before", style="cyan", justify="right")
+    stats_table.add_column("Used After", style="red",justify="right")
+    stats_table.add_column("Distance After", style="cyan",justify="right")
 
     for disk in sorted(diskstats.keys()):
         used_before = diskstats[disk]

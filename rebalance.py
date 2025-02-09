@@ -49,22 +49,6 @@ def run_du(path):
     return int(result.stdout.split()[0]) if result.stdout else 0  # Keeps in bytes
 
 
-### **Load or Scan Data**
-def load_or_scan_shares():
-    """Loads shares data from DB or rescans if not found."""
-    with shelve.open(DB_SHARES) as db:
-        if args.rescan or not bool(db):  # Rescan only if requested or DB is empty
-            print("Scanning shares...")
-            sharestats = {
-                share.name: run_du(USER_SHARES_DIR / share)
-                for share in sorted(USER_SHARES_DIR.iterdir()) if share.is_dir()
-            }
-            db.clear()
-            db.update(sharestats)  # Save to DB
-        else:
-            sharestats = dict(db)  # Load existing data
-    return sharestats
-
 def load_or_scan_directories():
     """Loads directory data from DB or rescans if not found."""
     with shelve.open(DB_DIRS) as db:
@@ -112,17 +96,15 @@ def get_disk_distance(diskstats):
     return diskdistance
 
 def calculate_moves(diskdistance, dirstats, min_move_size=1_000_000_000):
-    """
-    Selects best directories to move from overfilled disks to underfilled disks
-    using a two-phase approach: 
-      1. Major balancing (large directories)
-      2. Refinement (smaller directories)
-    """
+    # Selects best directories to move from overfilled disks to underfilled disks
+    # Implements a "no-reverse-moves" constraint to prevent back-and-forth swaps.
+
     movelist = {}
     total_moved = 0
+    banned_moves = set()  # Stores (target, source) pairs to prevent reversing moves
 
-    # **PHASE 1: Move large directories first**
     while True:
+        # Identify most imbalanced disks
         maxdisk = max(diskdistance, key=lambda d: diskdistance[d]["diff"])
         mindisk = min(diskdistance, key=lambda d: diskdistance[d]["diff"])
 
@@ -133,8 +115,16 @@ def calculate_moves(diskdistance, dirstats, min_move_size=1_000_000_000):
         if maxdiff <= 0 or mindiff >= 0:
             break
 
+        # Ensure we're not reversing a previous move
+        if (maxdisk, mindisk) in banned_moves:
+            break  # Prevents inefficient swaps
+
         # Filter directories that belong to maxdisk, fit within mindisk's space, and meet min_move_size
-        eligible_dirs = {size: path for path, size in dirstats.items() if maxdisk in path and size <= maxdiff and size >= min_move_size}
+        eligible_dirs = {
+            size: path
+            for path, size in dirstats.items()
+            if maxdisk in path and size <= maxdiff and size >= min_move_size
+        }
 
         if not eligible_dirs:
             break  # No more valid large moves
@@ -149,7 +139,11 @@ def calculate_moves(diskdistance, dirstats, min_move_size=1_000_000_000):
         diskdistance[mindisk]["diff"] += best_size
         total_moved += best_size
 
+        # Add a ban to prevent this pair from reversing moves
+        banned_moves.add((mindisk, maxdisk))
+
     return movelist, total_moved
+
 
 ### **Move Execution Using Rsync**
 def rsync_move(source, destination, execute=False):
@@ -229,6 +223,9 @@ def move_data(movelist, diskstats, diskdistance, execute=False):
 
     console.print(table)
 
+    # **NEW: Call print_data_moved_summary() here**
+    #print_data_moved_summary(diskstats, diskstats_after)
+
     # Disk Stats Before/After Table
     stats_table = Table(title=f"\n\nDisk Usage Before/After Moves (Target: {datasize(avg_used)})")
     stats_table.add_column("Disk", style="magenta", justify="center")
@@ -262,7 +259,6 @@ def move_data(movelist, diskstats, diskdistance, execute=False):
 
 ### **Main Execution Flow**
 def main():
-    sharestats = load_or_scan_shares()
     dirstats = load_or_scan_directories()
     diskstats = get_disk_stats()
     diskdistance = get_disk_distance(diskstats)

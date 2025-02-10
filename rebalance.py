@@ -96,53 +96,80 @@ def get_disk_distance(diskstats):
     return diskdistance
 
 def calculate_moves(diskdistance, dirstats, min_move_size=1_000_000_000):
-    # Selects best directories to move from overfilled disks to underfilled disks
-    # Implements a "no-reverse-moves" constraint to prevent back-and-forth swaps.
-
+    """
+    Selects best directories to move from overfilled disks to underfilled disks
+    and continues processing all imbalanced disks until no valid moves remain.
+    """
     movelist = {}
     total_moved = 0
-    banned_moves = set()  # Stores (target, source) pairs to prevent reversing moves
+    attempted_moves = set()  # To track which source-target pairs have been tried
 
     while True:
-        # Identify most imbalanced disks
-        maxdisk = max(diskdistance, key=lambda d: diskdistance[d]["diff"])
-        mindisk = min(diskdistance, key=lambda d: diskdistance[d]["diff"])
+        # Identify all overfilled and underfilled disks
+        overfilled = [d for d in diskdistance if diskdistance[d]["diff"] > 0]
+        underfilled = [d for d in diskdistance if diskdistance[d]["diff"] < 0]
 
-        maxdiff = diskdistance[maxdisk]["diff"]
-        mindiff = diskdistance[mindisk]["diff"]
-
-        # Stop if no valid move exists
-        if maxdiff <= 0 or mindiff >= 0:
+        # If no valid moves exist, stop processing
+        if not overfilled or not underfilled:
             break
 
-        # Ensure we're not reversing a previous move
-        if (maxdisk, mindisk) in banned_moves:
-            break  # Prevents inefficient swaps
+        # Sort overfilled disks (largest surplus first) and underfilled disks (largest deficit first)
+        overfilled.sort(key=lambda d: diskdistance[d]["diff"], reverse=True)
+        underfilled.sort(key=lambda d: diskdistance[d]["diff"])
 
-        # Filter directories that belong to maxdisk, fit within mindisk's space, and meet min_move_size
-        eligible_dirs = {
-            size: path
-            for path, size in dirstats.items()
-            if maxdisk in path and size <= maxdiff and size >= min_move_size
-        }
+        move_made = False  # Track whether at least one move is made
 
-        if not eligible_dirs:
-            break  # No more valid large moves
+        for maxdisk in overfilled:
+            maxdiff = diskdistance[maxdisk]["diff"]
 
-        # Pick the largest possible directory that fits
-        best_size = max(eligible_dirs)
-        best_dir = eligible_dirs[best_size]
+            for mindisk in underfilled:
+                mindiff = diskdistance[mindisk]["diff"]
 
-        # Move it and update tracking
-        movelist[best_size] = (best_dir, maxdisk, mindisk)
-        diskdistance[maxdisk]["diff"] -= best_size
-        diskdistance[mindisk]["diff"] += best_size
-        total_moved += best_size
+                # Skip if no valid move exists
+                if maxdiff <= 0 or mindiff >= 0:
+                    continue
 
-        # Add a ban to prevent this pair from reversing moves
-        banned_moves.add((mindisk, maxdisk))
+                # Avoid redundant swaps (diskX → diskY → diskX)
+                if (maxdisk, mindisk) in attempted_moves:
+                    continue
+
+                # Get all directories from maxdisk that fit within mindisk’s available space and meet min_move_size
+                eligible_dirs = {
+                    size: path
+                    for path, size in dirstats.items()
+                    if maxdisk in path and size <= maxdiff and size >= min_move_size
+                }
+
+                if not eligible_dirs:
+                    continue  # No valid moves for this disk pair
+
+                # Pick the largest possible directory that fits
+                best_size = max(eligible_dirs)
+                best_dir = eligible_dirs[best_size]
+
+                # Move it and update tracking
+                movelist[best_size] = (best_dir, maxdisk, mindisk)
+                diskdistance[maxdisk]["diff"] -= best_size
+                diskdistance[mindisk]["diff"] += best_size
+                total_moved += best_size
+                move_made = True
+
+                # Prevent redundant moves between the same disk pair
+                attempted_moves.add((maxdisk, mindisk))
+
+                # Since we made a move, re-evaluate the disk lists
+                break  
+
+            if move_made:
+                break  
+
+        # If no moves were made in the last iteration, exit
+        if not move_made:
+            break
 
     return movelist, total_moved
+
+
 
 
 ### **Move Execution Using Rsync**
